@@ -1,52 +1,204 @@
-//////////////////////////////////////////////////////////
-//  _____        _                    _____      _
-// |  __ \      (_)                  / ____|    (_)
-// | |  | |_   _ _ _ __   ___ ______| |     ___  _ _ __
-// | |  | | | | | | '_ \ / _ \______| |    / _ \| | '_ \ 
-// | |__| | |_| | | | | | (_) |     | |___| (_) | | | | |
-// |_____/ \__,_|_|_| |_|\___/       \_____\___/|_|_| |_|
-//  Code for ESP32 boards v2.6.3
-//  © Duino-Coin Community 2019-2021
-//  Distributed under MIT License
-//////////////////////////////////////////////////////////
-//  https://github.com/revoxhere/duino-coin - GitHub
-//  https://duinocoin.com - Official Website
-//  https://discord.gg/k48Ht5y - Discord
-//  https://github.com/revoxhere - @revox
-//  https://github.com/JoyBed - @JoyBed
-//////////////////////////////////////////////////////////
-//  If you don't know what to do, visit official website
-//  and navigate to Getting Started page. Happy mining!
-//////////////////////////////////////////////////////////
+/*
+   ____  __  __  ____  _  _  _____       ___  _____  ____  _  _
+  (  _ \(  )(  )(_  _)( \( )(  _  )___  / __)(  _  )(_  _)( \( )
+   )(_) ))(__)(  _)(_  )  (  )(_)((___)( (__  )(_)(  _)(_  )  (
+  (____/(______)(____)(_)\_)(_____)     \___)(_____)(____)(_)\_)
+  Official code for ESP32 boards                     version 3.5
 
-const char* ssid     = "Your WiFi SSID";            // Change this to your WiFi SSID
-const char* password = "Your WiFi password";        // Change this to your WiFi password
-const char* ducouser = "Your Duino-Coin username";  // Change this to your Duino-Coin username
-const char* rigname  = "None";                     // Change this if you want to display a custom rig name in the Wallet
-#define LED_BUILTIN     2                           // Change this if your board has built-in led on non-standard pin (NodeMCU - 16 or 2)
-#define WDT_TIMEOUT 60                              // Define watchdog timer seconds
+  Duino-Coin Team & Community 2019-2022 © MIT Licensed
+  https://duinocoin.com
+  https://github.com/revoxhere/duino-coin
 
-//////////////////////////////////////////////////////////
-//  If you're using the ESP32-CAM board or other board
-//  that doesn't support OTA (Over-The-Air programming)
-//  comment the ENABLE_OTA definition line
-//  (#define ENABLE_OTA)
-//////////////////////////////////////////////////////////
+  If you don't know where to start, visit official website and navigate to
+  the Getting Started page. Have fun mining!
+*/
 
-#define ENABLE_OTA
+/***************** START OF MINER CONFIGURATION SECTION *****************/
+// Change the part in brackets to your Duino-Coin username
+const char *DUCO_USER = "USERNAME";
+// Change the part in brackets to your mining key (if you enabled it in the wallet)
+const char* MINER_KEY = "MINING_KEY";
+// Change the part in brackets to your WiFi name
+const char *SSID = "WIFI_NAME";
+// Change the part in brackets to your WiFi password
+const char *WIFI_PASS = "WIFI_PASSWORD";
+// Change the part in brackets if you want to set a custom miner name (use Auto to autogenerate, None for no name)
+const char *RIG_IDENTIFIER = "None";
+// Change this if your board has built-in led on non-standard pin
+#define LED_BUILTIN 2
 
-//////////////////////////////////////////////////////////
-//  If you don't want to use the Serial interface comment
-//  the ENABLE_SERIAL definition line (#define ENABLE_SERIAL)
-//////////////////////////////////////////////////////////
+template<typename T>
+class DuinoIoT {
+  T sensor;
+};
 
+typedef struct {
+  String val;
+} SensorData_t;
+
+// Uncomment the line below if you wish to use a DHT sensor (Duino IoT beta)
+// #define USE_DHT
+#ifdef USE_DHT
+  // Install "DHT sensor library" if you get an error
+  #include <DHT.h>
+  // Change 2 to the pin you've connected your sensor to
+  #define DHTPIN 2
+  // Set DHT11 or DHT22 accordingly
+  #define DHTTYPE DHT11
+
+  template<>
+  class DuinoIoT<DHT> {
+
+    DHT sensor;
+
+    public:
+
+    DuinoIoT<DHT>() : sensor(DHTPIN, DHTTYPE) {}
+
+    void begin() {
+      Serial.println("Initializing DHT sensor");
+      sensor.begin();
+      Serial.println("Test reading: " + String(sensor.readTemperature()) + "*C " + String(sensor.readHumidity()) + "% humidity");
+    }
+
+    void getSensorData(SensorData_t *data) {
+      String temp = String(sensor.readTemperature());
+      String hum = String(sensor.readHumidity());
+      Serial.println("DHT readings: " + temp + "*C, " + hum + "%");
+      data->val = temp + "@" + hum;
+    }
+  };
+
+  DuinoIoT<DHT> duinoIoT;
+#endif
+// Uncomment the line below if you wish to use an AHT10 or AHT20 sensor (Duino IoT beta)
+//#define USE_AHT
+#ifdef USE_AHT
+  // Install "Adafruit AHTX0 Library" if you get an error
+  #include <Adafruit_AHTX0.h>
+  // AHT10/AHT20 should be connected to ESP32 default I2C pins
+  // i.e. (I2C_SDA: GPIO_21 and I2C_SCL: GPIO_22)
+
+  template<>
+  class DuinoIoT<Adafruit_AHTX0> {
+
+    Adafruit_AHTX0 sensor;
+
+    public:
+
+    DuinoIoT<Adafruit_AHTX0>() : sensor() {}
+
+    void begin() {
+      Serial.println("Initializing AHT sensor");
+      if (! sensor.begin()) {
+        Serial.println("Could not find AHT Sensor. Check wiring?");
+        while (1) delay(10);
+      }
+      sensors_event_t hum, temp;
+      sensor.getEvent(&hum, &temp);
+      Serial.println("Test reading: " + String(temp.temperature) + "*C, " + String(hum.relative_humidity) + "% rH");
+    }
+
+    void getSensorData(SensorData_t *data) {
+      sensors_event_t hum, temp;
+      sensor.getEvent(&hum, &temp);
+      Serial.println("AHT readings: " + String(temp.temperature) + "*C, " + String(hum.relative_humidity) + "% rH");
+      data->val = String(temp.temperature) + "@" + String(hum.relative_humidity);
+    }
+  };
+
+  DuinoIoT<Adafruit_AHTX0> duinoIoT;
+#endif
+
+// Uncomment the line below if you wish to use an BMP280 sensor (Duino IoT beta)
+//#define USE_BMP280
+#ifdef USE_BMP280
+// Install "Adafruit BMP280 Library" if you get an error
+# include <Adafruit_BMP280.h>
+# include <Wire.h>
+# define I2C_SDA_PIN 22
+# define I2C_SCL_PIN 23
+# define BMP280_I2C_ADDR 0x76
+  template<>
+  class DuinoIoT<Adafruit_BMP280> {
+
+    Adafruit_BMP280 sensor;
+
+    public:
+
+    DuinoIoT<Adafruit_BMP280>() : sensor() {}
+
+    void begin() {
+      Serial.println("Initializing BMP280 sensor");
+      Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+      if (!sensor.begin(BMP280_I2C_ADDR)) {
+        Serial.println("Could not find BMP280 Sensor. Check wiring?");
+        while (1); delay(10);
+      }
+      sensor.setSampling(Adafruit_BMP280::MODE_NORMAL,
+                    Adafruit_BMP280::SAMPLING_X2,
+                    Adafruit_BMP280::SAMPLING_X16,
+                    Adafruit_BMP280::FILTER_X16,
+                    Adafruit_BMP280::STANDBY_MS_500);
+
+      Serial.print(F("Test reading: "));Serial.print(sensor.readTemperature());Serial.print(sensor.readPressure());
+    }
+
+    void getSensorData(SensorData_t *data) {
+      String temp = String(sensor.readTemperature());
+      String pressure = String(sensor.readPressure() / 100.0F);
+      Serial.println("BMP280 readings: " + temp + "*C, " + pressure + " hPa");
+      data->val = "temperature:" + temp + "@pressure:" + pressure;
+    }
+  };
+
+  DuinoIoT<Adafruit_BMP280> duinoIoT;
+#endif
+
+#define BLINK_SETUP_COMPLETE 2
+#define BLINK_CLIENT_CONNECT 3
+#define BLINK_RESET_DEVICE   5
+
+const bool LED_BLINKING = true;
+
+// Define watchdog timer seconds
+#define WDT_TIMEOUT 60
+
+// If optimizations cause problems, change them to -O0 (the default)
+#pragma GCC optimize ("-Ofast")
+
+// #include "hwcrypto/sha.h" // Uncomment this line if you're using an older
+// version of the ESP32 core and sha_parellel_engine doesn't work for you
+#include "sha/sha_parallel_engine.h"  // Include hardware accelerated hashing library
+
+/* If you would like to use mqtt monitoring uncomment
+   the ENABLE_MQTT defition line(#define ENABLE_MQTT).
+   NOTE: enabling MQTT could slightly decrease hashrate */
+// #define ENABLE_MQTT
+// Change this to specify MQTT server (ip only - no prefixes)
+const char *mqtt_server = "";
+// Port mqtt server is listening at (default: 1883)
+const int mqtt_port = 1883;
+
+/* If you're using the ESP32-CAM board or other board
+  that doesn't support OTA (Over-The-Air programming)
+  comment the ENABLE_OTA definition line (#define ENABLE_OTA)
+   NOTE: enabling OTA support may decrease the hashrate */
+// #define ENABLE_OTA
+
+/* If you want to use the web dashboard uncomment the line below */
+// #define WEB_DASHBOARD
+
+/* If you don't want to use the Serial interface comment
+  the ENABLE_SERIAL definition line (#define ENABLE_SERIAL)*/
 #define ENABLE_SERIAL
-
+/* ***************** END OF MINER CONFIGURATION SECTION *****************
+   Do not change the lines below. These lines are static and dynamic variables
+   that will be used by the program for counters and measurements. */
 #ifndef ENABLE_SERIAL
-// disable Serial output
 #define Serial DummySerial
 static class {
-public:
+  public:
     void begin(...) {}
     void print(...) {}
     void println(...) {}
@@ -54,536 +206,819 @@ public:
 } Serial;
 #endif
 
-// #include "esp32/sha.h" // Uncomment this line if you're using an older version of the ESP32 core and sha_parellel_engine doesn't work for you
-// #include "hwcrypto/sha.h" // If the above still doesn't work, you can try this one
-#include "sha/sha_parallel_engine.h" // Include hardware accelerated hashing library
+#ifndef ENABLE_MQTT
+#define PubSubClient DummyPubSubClient
+class PubSubClient {
+  public:
+    PubSubClient(Client& client) {}
+    bool connect(...) {
+      return false;
+    }
+    bool connected(...) {
+      return true;
+    }
+    void loop(...) {}
+    void publish(...) {}
+    void subscribe(...) {}
+    void setServer(...) {}
+};
+#endif
 
-#include <esp_task_wdt.h> //Include WDT libary
-#include <WiFi.h>
-#include <ESPmDNS.h>
-#include <WiFiUdp.h>
+// Data Structures
+typedef struct TaskData {
+  TaskHandle_t handler;
+  byte taskId;
+  float hashrate;
+  unsigned long shares;
+  unsigned int difficulty;
+
+} TaskData_t;
+
+// Include required libraries
 #include <ArduinoJson.h>
+#include <ESPmDNS.h>
 #include <HTTPClient.h>
-
+#include <WiFi.h>
+#include <WiFiUdp.h>
+#include <esp_task_wdt.h>
+#include <WebServer.h>
 
 #ifdef ENABLE_OTA
 #include <ArduinoOTA.h>
 #endif
 
+#ifdef ENABLE_MQTT
+#include <PubSubClient.h>
+#endif
+
+// Global Definitions
+#define NUMBEROFCORES 2
+#define MSGDELIMITER ','
+#define MSGNEWLINE '\n'
+
+// Handles for additional threads
 TaskHandle_t WiFirec;
-TaskHandle_t Task1;
-TaskHandle_t Task2;
+TaskData_t TaskThreadData[NUMBEROFCORES];
+TaskHandle_t MqttPublishHandle;
 SemaphoreHandle_t xMutex;
 
-
-const char * urlPool = "http://51.15.127.80:4242/getPool";
-unsigned int share_count = 0; // Share variable
+const char * DEVICE = "ESP32";
+const char * POOLPICKER_URL[] = {"https://server.duinocoin.com/getPool"};
+const char * MINER_BANNER = "Official ESP32 Miner";
+const char * MINER_VER = "3.5";
+String pool_name = "";
 String host = "";
+String node_id = "";
 int port = 0;
+int walletid = 0;
+volatile int wifi_state = 0;
+volatile int wifi_prev_state = WL_CONNECTED;
+volatile bool ota_state = false;
+volatile char chip_id[23];
+char rigname_auto[23];
+int mqttUpdateTrigger = 0;
+String mqttRigTopic = "";
 
-volatile int wifiStatus = 0;
-volatile int wifiPrev = WL_CONNECTED;
-volatile bool OTA_status = false;
+const char WEBSITE[] PROGMEM = R"=====(
+<!DOCTYPE html>
+<html>
+<!--
+    Duino-Coin self-hosted dashboard
+    MIT licensed
+    Duino-Coin official 2019-2022
+    https://github.com/revoxhere/duino-coin
+    https://duinocoin.com
+-->
 
-volatile char ID[23]; // DUCO MCU ID
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Duino-Coin @@DEVICE@@ dashboard</title>
+    <link rel="stylesheet" href="https://server.duinocoin.com/assets/css/mystyles.css">
+    <link rel="shortcut icon" href="https://github.com/revoxhere/duino-coin/blob/master/Resources/duco.png?raw=true">
+    <link rel="icon" type="image/png" href="https://github.com/revoxhere/duino-coin/blob/master/Resources/duco.png?raw=true">
+</head>
 
-void SetHostPort(String h, int p)
-{
-  host = h;
-  port = p;
-}
+<body>
+    <section class="section">
+        <div class="container">
+            <h1 class="title">
+                <img class="icon" src="https://github.com/revoxhere/duino-coin/blob/master/Resources/duco.png?raw=true">
+                @@DEVICE@@ <small>(@@ID@@)</small>
+            </h1>
+            <p class="subtitle">
+                Self-hosted, lightweight, official dashboard for your <strong>Duino-Coin</strong> miner
+            </p>
+        </div>
+        <br>
+        <div class="container">
+            <div class="columns">
+                <div class="column">
+                    <div class="box">
+                        <p class="subtitle">
+                            Mining statistics
+                        </p>
+                        <div class="columns is-multiline">
+                            <div class="column" style="min-width:15em">
+                                <div class="title is-size-5 mb-0">
+                                    @@HASHRATE@@kH/s
+                                </div>
+                                <div class="heading is-size-5">
+                                    Hashrate
+                                </div>
+                            </div>
+                            <div class="column" style="min-width:15em">
+                                <div class="title is-size-5 mb-0">
+                                    @@DIFF@@
+                                </div>
+                                <div class="heading is-size-5">
+                                    Difficulty
+                                </div>
+                            </div>
+                            <div class="column" style="min-width:15em">
+                                <div class="title is-size-5 mb-0">
+                                    @@SHARES@@
+                                </div>
+                                <div class="heading is-size-5">
+                                    Shares
+                                </div>
+                            </div>
+                            <div class="column" style="min-width:15em">
+                                <div class="title is-size-5 mb-0">
+                                    @@NODE@@
+                                </div>
+                                <div class="heading is-size-5">
+                                    Node
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="column">
+                    <div class="box">
+                        <p class="subtitle">
+                            Device information
+                        </p>
+                        <div class="columns is-multiline">
+                            <div class="column" style="min-width:15em">
+                                <div class="title is-size-5 mb-0">
+                                    @@DEVICE@@
+                                </div>
+                                <div class="heading is-size-5">
+                                    Device type
+                                </div>
+                            </div>
+                            <div class="column" style="min-width:15em">
+                                <div class="title is-size-5 mb-0">
+                                    @@ID@@
+                                </div>
+                                <div class="heading is-size-5">
+                                    Device ID
+                                </div>
+                            </div>
+                            <div class="column" style="min-width:15em">
+                                <div class="title is-size-5 mb-0">
+                                    @@MEMORY@@
+                                </div>
+                                <div class="heading is-size-5">
+                                    Free memory
+                                </div>
+                            </div>
+                            <div class="column" style="min-width:15em">
+                                <div class="title is-size-5 mb-0">
+                                    @@VERSION@@
+                                </div>
+                                <div class="heading is-size-5">
+                                    Miner version
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <br>
+            <div class="has-text-centered">
+                <div class="title is-size-6 mb-0">
+                    Hosted on
+                    <a href="http://@@IP_ADDR@@">
+                        http://<b>@@IP_ADDR@@</b>
+                    </a>
+                    &bull;
+                    <a href="https://duinocoin.com">
+                        duinocoin.com
+                    </a>
+                    &bull;
+                    <a href="https://github.com/revoxhere/duino-coin">
+                        github.com/revoxhere/duino-coin
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+</body>
 
-void UpdateHostPort(String input) {
-  // Thanks @ricaun for the code
-  DynamicJsonDocument doc(256);
-  deserializeJson(doc, input);
+</html>
+)=====";
 
-  const char* name = doc["name"];
-  const char* host = doc["ip"];
-  int port = doc["port"];
+WebServer server(80);
+WiFiClient wifiMqttClient;
+PubSubClient mqttClient(wifiMqttClient);
 
-  Serial.println("Fetched pool: " + String(name) + " " + String(host) + " " + String(port));
-  SetHostPort(String(host), port);
+// Util Functions
+void blink(uint8_t count, uint8_t pin = LED_BUILTIN) {
+  if (LED_BLINKING)
+  {
+    uint8_t state = LOW;
+
+    for (int x = 0; x < (count << 1); ++x) {
+      digitalWrite(pin, state ^= HIGH);
+      delay(80);
+    }
+  }
 }
 
 String httpGetString(String URL) {
   String payload = "";
-  WiFiClient client;
+  WiFiClientSecure client;
+  client.setInsecure();
   HTTPClient http;
-  if (http.begin(client, URL))
-  {
+
+  if (http.begin(client, URL)) {
     int httpCode = http.GET();
-    if (httpCode == HTTP_CODE_OK)
-    {
+    if (httpCode == HTTP_CODE_OK) {
       payload = http.getString();
-    }
-    else
-    {
-      Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+    } else {
+      Serial.printf("Poolpicker fetch failed - error: %s\n",
+                    http.errorToString(httpCode).c_str());
     }
     http.end();
   }
   return payload;
 }
 
+void UpdateHostPort(String input) {
+  // Thanks @ricaun for the code
+  StaticJsonDocument<256> doc;
+  DeserializationError error = deserializeJson(doc, input);
+
+  if (error) {
+    Serial.print(F("JSON deserialization failed - error: "));
+    Serial.println(error.f_str());
+    return;
+  }
+
+  const char *name = doc["name"];
+  const char *h = doc["ip"];
+  int p = doc["port"];
+
+  host = h;
+  port = p;
+  node_id = String(name);
+
+  // Send to MQTT
+  mqttClient.publish((mqttRigTopic + "pool_name").c_str(), name);
+  mqttClient.publish((mqttRigTopic + "pool_ip").c_str(), h);
+  mqttClient.publish((mqttRigTopic + "pool_port").c_str(), String(p).c_str());
+
+  // Send to Serial
+  Serial.println("Poolpicker selected the best mining node: " + String(name));
+}
+
+// Communication Functions
 void UpdatePool() {
-  String input = httpGetString(urlPool);
-  if (input == "") return;
+  String input = "";
+  int waitTime = 1;
+  int poolIndex = 0;
+  int poolSize = sizeof(POOLPICKER_URL) / sizeof(char*);
+
+  while (input == "") {
+    Serial.println("Fetching mining node from the poolpicker in " + String(waitTime) + "s");
+    input = httpGetString(POOLPICKER_URL[poolIndex]);
+    poolIndex += 1;
+
+    // Check if pool index needs to roll over
+    if (poolIndex >= poolSize) {
+      poolIndex %= poolSize;
+      delay(waitTime * 1000);
+
+      // Increase wait time till a maximum of 32 seconds (addresses: Limit connection requests on failure in ESP boards #1041)
+      waitTime *= 2;
+      if ( waitTime > 32 )
+        waitTime = 32;
+    }
+  }
+
+  // Setup pool with new input
   UpdateHostPort(input);
 }
 
+void HandleMqttConnection() {
+  // Check Connection
+  if (!mqttClient.connected()) {
+    // Setup MQTT Client
+    Serial.println("Connecting to MQTT server: " + String(mqtt_server) + " on port: " + String(mqtt_port));
+    mqttClient.setServer(mqtt_server, mqtt_port);
 
-void WiFireconnect( void * pvParameters ) {
+    // Setup Rig Topic
+    mqttRigTopic = "duinocoin/" + String(RIG_IDENTIFIER) + "/";
+
+    // Try to connect
+    if (mqttClient.connect(RIG_IDENTIFIER, (mqttRigTopic + "state").c_str(), 0, true, String(0).c_str())) {
+      // Connection Succesfull
+      Serial.println("Succesfully connected to MQTT server");
+
+      // Output connection info
+      mqttClient.publish((mqttRigTopic + "ip").c_str(), WiFi.localIP().toString().c_str());
+      mqttClient.publish((mqttRigTopic + "name").c_str(), String(RIG_IDENTIFIER).c_str());
+    }
+    else {
+      // Connection Failed
+      Serial.println("Failed to connect to MQTT server");
+    }
+  }
+
+  // Default MQTT Loop
+  mqttClient.loop();
+}
+
+void dashboard() {
+  Serial.println("Handling HTTP client");
+
+  String s = WEBSITE;
+  s.replace("@@IP_ADDR@@", WiFi.localIP().toString());
+
+  int avgDiff = 0;
+  int totHash = 0;
+  int totShares = 0;
+  for (int i = 0; i < NUMBEROFCORES; i++) {
+        avgDiff += TaskThreadData[i].difficulty;
+        totHash += TaskThreadData[i].hashrate;
+        totShares += TaskThreadData[i].shares;
+  }
+  avgDiff /= NUMBEROFCORES;
+  
+  s.replace("@@HASHRATE@@", String(totHash / 1000));
+  s.replace("@@DIFF@@", String(avgDiff / 100));
+  s.replace("@@SHARES@@", String(totShares));
+  s.replace("@@NODE@@", String(node_id));
+
+  s.replace("@@DEVICE@@", String(DEVICE));
+  s.replace("@@ID@@", String(RIG_IDENTIFIER));
+  s.replace("@@MEMORY@@", String(ESP.getFreeHeap()));
+  s.replace("@@VERSION@@", String(MINER_VER));
+
+  server.send(200, "text/html", s);
+}
+
+
+void WiFireconnect(void *pvParameters) {
   int n = 0;
   unsigned long previousMillis = 0;
   const long interval = 500;
   esp_task_wdt_add(NULL);
-  for(;;) {
-    wifiStatus = WiFi.status();
-    
+  for (;;) {
+    wifi_state = WiFi.status();
+
     #ifdef ENABLE_OTA
-    ArduinoOTA.handle();
+        ArduinoOTA.handle();
     #endif
     
-    if (OTA_status)  // If the OTA is working then reset the watchdog.
+    #ifdef WEB_DASHBOARD
+        server.handleClient();
+    #endif
+
+    if (ota_state)  // If OTA is working, reset the watchdog
       esp_task_wdt_reset();
+
     // check if WiFi status has changed.
-    if ((wifiStatus == WL_CONNECTED)&&(wifiPrev != WL_CONNECTED)) {
-      esp_task_wdt_reset(); // Reset watchdog timer
-      Serial.println(F("\nConnected to WiFi!"));
+    if ((wifi_state == WL_CONNECTED) && (wifi_prev_state != WL_CONNECTED)) {
+      esp_task_wdt_reset();  // Reset watchdog timer
+
+      // Connect to MQTT (will do nothing if MQTT is disabled)
+      HandleMqttConnection();
+
+      // Write Data to Serial
+      Serial.println("\n\nSuccessfully connected to WiFi");
       Serial.println("Local IP address: " + WiFi.localIP().toString());
+      Serial.println("Rig name: " + String(RIG_IDENTIFIER));
       Serial.println();
+
+      #ifdef WEB_DASHBOARD
+        if (!MDNS.begin(RIG_IDENTIFIER)) {
+          Serial.println("mDNS unavailable");
+        }
+        MDNS.addService("http", "tcp", 80);
+        Serial.print("Configured mDNS for dashboard on http://" 
+                      + String(RIG_IDENTIFIER)
+                      + ".local (or http://"
+                      + WiFi.localIP().toString()
+                      + ")");
+        server.on("/", dashboard);
+        server.begin();
+      #endif
+
+      // Notify Setup Complete
+      blink(BLINK_SETUP_COMPLETE);// Sucessfull connection with wifi network
+
+      // Update Pool and wait a bit
       UpdatePool();
+      yield();
+      delay(100);
     }
-    else if ((wifiStatus != WL_CONNECTED)&&(wifiPrev == WL_CONNECTED)) {
-      esp_task_wdt_reset(); // Reset watchdog timer
+
+    else if ((wifi_state != WL_CONNECTED) &&
+             (wifi_prev_state == WL_CONNECTED)) {
+      esp_task_wdt_reset();  // Reset watchdog timer
       Serial.println(F("\nWiFi disconnected!"));
       WiFi.disconnect();
+
       Serial.println(F("Scanning for WiFi networks"));
       n = WiFi.scanNetworks(false, true);
-      Serial.println(F("Scan done"));
+
       if (n == 0) {
-          Serial.println(F("No networks found. Resetting ESP32."));
-          esp_restart();
-      } else {
-          Serial.print(n);
-          Serial.println(F(" networks found"));
-          for (int i = 0; i < n; ++i) {
-              // Print SSID and RSSI for each network found
-              Serial.print(i + 1);
-              Serial.print(F(": "));
-              Serial.print(WiFi.SSID(i));
-              Serial.print(F(" ("));
-              Serial.print(WiFi.RSSI(i));
-              Serial.print(F(")"));
-              Serial.println((WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":"*");
-              delay(10);
-          }
+        Serial.println(F("No networks found - restarting..."));
+        blink(BLINK_RESET_DEVICE);
+        esp_restart();
       }
-      esp_task_wdt_reset(); // Reset watchdog timer
+      else {
+        Serial.print(n);
+        Serial.println(F(" networks found"));
+        for (int i = 0; i < n; ++i) {
+          // Print SSID and RSSI for each network found
+          Serial.print(i + 1);
+          Serial.print(F(": "));
+          Serial.print(WiFi.SSID(i));
+          Serial.print(F(" ("));
+          Serial.print(WiFi.RSSI(i));
+          Serial.print(F(")"));
+          Serial.println((WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ? " "
+                         : "*");
+          delay(10);
+        }
+      }
+
+      esp_task_wdt_reset();  // Reset watchdog timer
       Serial.println();
-      Serial.println(F("Please, check if your WiFi network is on the list and check if it's strong enough (greater than -90)."));
-      Serial.println("ESP32 will reset itself after "+String(WDT_TIMEOUT)+" seconds if can't connect to the network");
-      Serial.print("Connecting to: " + String(ssid));
+      Serial.println(
+        F("Please check if your WiFi network is on the list and check if "
+          "it's strong enough (greater than -90)"));
+      Serial.println("ESP32 will reset itself after " + String(WDT_TIMEOUT) +
+                     " seconds if can't connect to the network");
+
+      Serial.print("Connecting to: " + String(SSID));
       WiFi.reconnect();
     }
-    else if ((wifiStatus == WL_CONNECTED)&&(wifiPrev == WL_CONNECTED)) {
-      esp_task_wdt_reset(); // Reset watchdog timer
+
+    else if ((wifi_state == WL_CONNECTED) &&
+             (wifi_prev_state == WL_CONNECTED)) {
+      esp_task_wdt_reset();  // Reset watchdog timer
       delay(1000);
     }
+
     else {
-       // Don't reset watchdog timer. If the timer gets to the timeout then it will reset the MCU
+      // Don't reset watchdog timer
       unsigned long currentMillis = millis();
       if (currentMillis - previousMillis >= interval) {
         previousMillis = currentMillis;
         Serial.print(F("."));
       }
     }
-    wifiPrev = wifiStatus;
+    wifi_prev_state = wifi_state;
   }
 }
 
-// Task1code
-void Task1code( void * pvParameters ) {
-  WiFiClient client1;  
-  unsigned long Shares1 = 0; // Share variable
-  String SERVER_VER = "";
-  int buff1size = 0;
-  String hash1 = "";
-  String job1 = "";
-  unsigned int diff1 = 0;
-  size_t len = 0;
-  size_t final_len = 0;
-  unsigned int sizeofjob11 = 100;
-  unsigned char* job11 = (unsigned char*)malloc(sizeofjob11 * sizeof(unsigned char));
-  byte shaResult1[20];
-  unsigned long StartTime1 = 0;
-  String hash11 = "";
-  unsigned int payloadLenght1 = 0;
-  unsigned long EndTime1 = 0;
-  unsigned long ElapsedTime1 = 0;
-  float ElapsedTimeMiliSeconds1 = 0.0;
-  float ElapsedTimeSeconds1 = 0.0;
-  float HashRate1 = 0.0;
-  String feedback1 = "";
-  esp_task_wdt_add(NULL);
-  for(;;) {
-    if (OTA_status)  // If the OTA is working then reset the watchdog.
-      esp_task_wdt_reset();
-    while(wifiStatus != WL_CONNECTED){
-      delay(1000);
-      esp_task_wdt_reset();
-    }
-    Shares1 = 0; // Share variable
-    Serial.println(F("\nCORE1 Connecting to Duino-Coin server..."));
-    // Use WiFiClient class to create TCP connection
-    client1.setTimeout(1);
-    client1.flush();
-    yield();
-    if (!client1.connect(host.c_str(), port)) {
-      Serial.println(F("CORE1 connection failed"));
-      delay(500);
-      continue;
-    }
-    Serial.println(F("CORE1 is connected"));
-    while(!client1.available()){
-      yield();
-      if (!client1.connected())
-        break;
-      delay(10);
-    }
-    
-    SERVER_VER = client1.readString(); // Server sends SERVER_VERSION after connecting
-    digitalWrite(LED_BUILTIN, HIGH);   // Turn off built-in led
-    delay(50);
-    digitalWrite(LED_BUILTIN, LOW);   // Turn on built-in led
-    Serial.println("CORE1 Connected to the server. Server version: " + String(SERVER_VER));
-    digitalWrite(LED_BUILTIN, HIGH);   // Turn off built-in led
-    delay(50);
-    digitalWrite(LED_BUILTIN, LOW);   // Turn on built-in led
-    
-    while (client1.connected()) {
-      esp_task_wdt_reset();
-      Serial.println("CORE1 Asking for a new job for user: " + String(ducouser));
-      client1.flush();
-      client1.print("JOB," + String(ducouser) + ",ESP32"); // Ask for new job
-      while(!client1.available()){
-        if (!client1.connected())
-          break;
-        delay(10);
-      }
-      yield();
-      if (!client1.connected())
-        break;
-      delay(50);
-      yield();
-      buff1size = client1.available();
-      Serial.print(F("CORE1 Buffer size is "));
-      Serial.println(buff1size);
-      if (buff1size<=10) {
-        Serial.println(F("CORE1 Buffer size is too small. Requesting another job."));
-        continue;
-      }
-      hash1 = client1.readStringUntil(','); // Read data to the first peroid - last block hash
-      job1 = client1.readStringUntil(','); // Read data to the next peroid - expected hash
-      diff1 = client1.readStringUntil('\n').toInt() * 100 + 1; // Read and calculate remaining data - difficulty
-      client1.flush();
-      job1.toUpperCase();
-      const char * c = job1.c_str();
-      
-      len = job1.length();
-      final_len = len / 2;
-      memset(job11, 0, sizeofjob11);
-      for (size_t i = 0, j = 0; j < final_len; i += 2, j++)
-        job11[j] = (c[i] % 32 + 9) % 25 * 16 + (c[i + 1] % 32 + 9) % 25;
-      memset(shaResult1, 0, sizeof(shaResult1));
-      
-      Serial.println("CORE1 Job received: " + String(hash1) + " " + String(job1) + " " + String(diff1));
-      StartTime1 = micros(); // Start time measurement
-      
-      for (unsigned long iJob1 = 0; iJob1 < diff1; iJob1++) { // Difficulty loop
-        hash11 = hash1 + String(iJob1);
-        payloadLenght1 = hash11.length();
-        
-        while( xSemaphoreTake( xMutex, portMAX_DELAY ) != pdTRUE );
-        esp_sha(SHA1, (const unsigned char*)hash11.c_str(), payloadLenght1, shaResult1);
-        xSemaphoreGive( xMutex );
-        
-        if (memcmp(shaResult1, job11, sizeof(shaResult1)) == 0) { // If result is found
-          EndTime1 = micros(); // End time measurement
-          ElapsedTime1 = EndTime1 - StartTime1; // Calculate elapsed time
-          ElapsedTimeMiliSeconds1 = ElapsedTime1 / 1000; // Convert to miliseconds
-          ElapsedTimeSeconds1 = ElapsedTimeMiliSeconds1 / 1000; // Convert to seconds
-          HashRate1 = iJob1 / ElapsedTimeSeconds1; // Calculate hashrate
-          if (!client1.connected()) {
-            Serial.println(F("CORE1 Lost connection. Trying to reconnect"));
-            if (!client1.connect(host.c_str(), port)) {
-              Serial.println(F("CORE1 connection failed"));
-              break;
-            }
-            Serial.println(F("CORE1 Reconnection successful."));
-          }
-          client1.flush();
-          client1.print(String(iJob1) + "," + String(HashRate1) + ",ESP32 CORE1 Miner v2.63," + String(rigname) + "," + String((char*)ID)); // Send result to server
-          Serial.println(F("CORE1 Posting result and waiting for feedback."));
-          while(!client1.available()){
-            if (!client1.connected()) {
-              Serial.println(F("CORE1 Lost connection. Didn't receive feedback."));
-              break;
-            }
-            delay(10);
-            yield();
-          }
-          delay(50);
-          yield();
-          feedback1 = client1.readStringUntil('\n'); // Receive feedback
-          client1.flush();
-          Shares1++;
-          Serial.println("CORE1 " + String(feedback1) + " share #" + String(Shares1) + " (" + String(iJob1) + ")" + " Hashrate: " + String(HashRate1));
-          if (HashRate1 < 4000) {
-            Serial.println(F("CORE1 Low hashrate. Restarting"));
-            client1.flush();
-            client1.stop();
-            esp_restart();
-          }
-          break; // Stop and ask for more work
-        }
-      }
-    }
-    Serial.println(F("CORE1 Not connected. Restarting core 1"));
-    client1.flush();
-    client1.stop();
-  }
-}
+// Miner Code
+void TaskMining(void *pvParameters) {
+  // Setup Thread
+  esp_task_wdt_add(NULL); // Disable watchdogtimer for this thread
 
-//Task2code
-void Task2code( void * pvParameters ) {
-  WiFiClient client;
-  unsigned long Shares = 0;
-  String SERVER_VER = "";
-  int buff1size = 0;
-  String hash = "";
-  String job = "";
-  unsigned int diff = 0;
-  size_t len = 0;
-  size_t final_len = 0;
-  unsigned int sizeofjob1 = 100;
-  unsigned char* job1 = (unsigned char*)malloc(sizeofjob1 * sizeof(unsigned char));
-  byte shaResult[20];
-  unsigned long StartTime = 0;
-  String hash1 = "";
-  unsigned int payloadLength = 0;
-  unsigned long EndTime = 0;
-  unsigned long ElapsedTime = 0;
-  float ElapsedTimeMiliSeconds = 0.0;
-  float ElapsedTimeSeconds = 0.0;
-  float HashRate = 0.0;
-  String feedback = "";
-  esp_task_wdt_add(NULL);
-  for(;;) {
-    if (OTA_status)  // If the OTA is working then reset the watchdog.
+  // Setup thread data
+  String taskCoreName = "Core " + String(xPortGetCoreID());
+  int taskId = xPortGetCoreID();
+
+  // Start main thread loop
+  for (;;) {
+    // If OTA needs to be preformed reset the task watchdog
+    if (ota_state)
       esp_task_wdt_reset();
-    while(wifiStatus != WL_CONNECTED){
+
+    // Wait for a valid network connection
+    while (wifi_state != WL_CONNECTED) {
       delay(1000);
       esp_task_wdt_reset();
     }
-    Shares = 0; // Share variable
-    
-    Serial.println(F("\nCORE2 Connecting to Duino-Coin server..."));
-    // Use WiFiClient class to create TCP connection
-    client.setTimeout(1);
-    client.flush();
+
+    // Wait for server to get pool information
+    while (port == 0) {
+      Serial.println(String(taskCoreName + " is waiting for the poolpicker..."));
+      delay(5000);
+      esp_task_wdt_reset();
+    }
+
+    // Setup WiFi Client and connection details
+    Serial.println("\n\n" + String(taskCoreName) + " is connecting to the Duino-Coin server...");
+    WiFiClient jobClient;
+    jobClient.setTimeout(15);
+    jobClient.flush();
     yield();
-    if (!client.connect(host.c_str(), port)) {
-      Serial.println(F("CORE2 connection failed"));
+
+    // Start connection to Duino-Coin server
+    if (!jobClient.connect(host.c_str(), port)) {
+      Serial.println(String(taskCoreName + " failed to connect"));
       delay(500);
       continue;
     }
-    Serial.println(F("CORE2 is connected"));
-    while(!client.available()){
+
+    // Wait for server connection
+    Serial.println(String(taskCoreName + " has connected to the server"));
+    while (!jobClient.available()) {
       yield();
-      if (!client.connected())
-        break;
+      if (!jobClient.connected()) break;
       delay(10);
     }
-    
-    SERVER_VER = client.readString(); // Server sends SERVER_VERSION after connecting
-    digitalWrite(LED_BUILTIN, HIGH);   // Turn off built-in led
-    delay(50);
-    digitalWrite(LED_BUILTIN, LOW);   // Turn on built-in led
-    Serial.println("CORE2 Connected to the server. Server version: " + String(SERVER_VER));
-    digitalWrite(LED_BUILTIN, HIGH);   // Turn off built-in led
-    delay(50);
-    digitalWrite(LED_BUILTIN, LOW);   // Turn on built-in led
-    
-    while (client.connected()) {
+
+    // Server sends SERVER_VERSION after connecting
+    String SERVER_VER = jobClient.readStringUntil(MSGNEWLINE);
+    Serial.println(String(taskCoreName + " received server version: v" + SERVER_VER));
+    blink(BLINK_CLIENT_CONNECT); // Sucessfull connection with the server
+
+    // Define job loop variables
+    int jobClientBufferSize = 0;
+
+    // Start Job loop
+    while (jobClient.connected()) {
+      // Reset watchdog timer before each job
       esp_task_wdt_reset();
-      Serial.println("CORE2 Asking for a new job for user: " + String(ducouser));
-      client.flush();
-      client.print("JOB," + String(ducouser) + ",ESP32"); // Ask for new job
-      while(!client.available()){
-        if (!client.connected())
-          break;
+
+      // We are connected and are able to request a job
+      Serial.println(String(taskCoreName + " asking for a new job for user: " + DUCO_USER));
+      jobClient.flush();
+
+      #if !(defined(USE_DHT) || defined(USE_AHT) || defined(USE_BMP280))
+        jobClient.print("JOB," + String(DUCO_USER) + ",ESP32," + String(MINER_KEY) + MSGNEWLINE);
+      #else
+        SensorData_t data = {""};
+        duinoIoT.getSensorData(&data);
+        jobClient.print("JOB," + String(DUCO_USER) + ",ESP32," + String(MINER_KEY) + "," +
+                        data.val +  MSGNEWLINE);
+      #endif
+      
+      while (!jobClient.available()) {
+        if (!jobClient.connected()) break;
         delay(10);
       }
       yield();
-      if (!client.connected())
-        break;
-      delay(50);
-      yield();
-      buff1size = client.available();
-      Serial.print(F("CORE2 Buffer size is "));
-      Serial.println(buff1size);
-      if (buff1size<=10) {
-        Serial.println(F("CORE2 Buffer size is too small. Requesting another job."));
+
+      // Check buffer size
+      jobClientBufferSize = jobClient.available();
+      if (jobClientBufferSize <= 64) {
+        Serial.println(String(taskCoreName + " received an invalid job with size of " + jobClientBufferSize + " bytes - requesting a new job..."));
         continue;
       }
-      hash = client.readStringUntil(','); // Read data to the first peroid - last block hash
-      job = client.readStringUntil(','); // Read data to the next peroid - expected hash
-      diff = client.readStringUntil('\n').toInt() * 100 + 1; // Read and calculate remaining data - difficulty
-      client.flush();
-      job.toUpperCase();
-      const char * c = job.c_str();
-      
-      len = job.length();
-      final_len = len / 2;
-      memset(job1, 0, sizeofjob1);
-      for (size_t i = 0, j = 0; j < final_len; i += 2, j++)
-        job1[j] = (c[i] % 32 + 9) % 25 * 16 + (c[i + 1] % 32 + 9) % 25;
-      memset(shaResult, 0, sizeof(shaResult));
-      
-      Serial.println("CORE2 Job received: " + String(hash) + " " + String(job) + " " + String(diff));
-      StartTime = micros(); // Start time measurement
-      
-      for (unsigned long iJob = 0; iJob < diff; iJob++) { // Difficulty loop
-        hash1 = hash + String(iJob);
-        payloadLength = hash1.length();
-        
-        while( xSemaphoreTake( xMutex, portMAX_DELAY ) != pdTRUE );
-        esp_sha(SHA1, (const unsigned char*)hash1.c_str(), payloadLength, shaResult);
-        xSemaphoreGive( xMutex );
-        
-        if (memcmp(shaResult, job1, sizeof(shaResult)) == 0) { // If result is found
-          EndTime = micros(); // End time measurement
-          ElapsedTime = EndTime - StartTime; // Calculate elapsed time
-          ElapsedTimeMiliSeconds = ElapsedTime / 1000; // Convert to miliseconds
-          ElapsedTimeSeconds = ElapsedTimeMiliSeconds / 1000; // Convert to seconds
-          HashRate = iJob / ElapsedTimeSeconds; // Calculate hashrate
-          if (!client.connected()) {
-            Serial.println(F("CORE2 Lost connection. Trying to reconnect"));
-            if (!client.connect(host.c_str(), port)) {
-              Serial.println(F("CORE2 connection failed"));
+      else {
+        Serial.println(String(taskCoreName + " received a correct job with size of " + jobClientBufferSize + " bytes"));
+      }
+
+      // Read hash, expected hash and difficulty from job description
+      String previousHash = jobClient.readStringUntil(MSGDELIMITER);
+      String expectedHash = jobClient.readStringUntil(MSGDELIMITER);
+      TaskThreadData[taskId].difficulty = jobClient.readStringUntil(MSGNEWLINE).toInt() * 100;
+      jobClient.flush();
+      if (LED_BLINKING) digitalWrite(LED_BUILTIN, LOW);
+
+      // Global Definitions
+      unsigned int job_size_task_one = 100;
+      unsigned char expectedHashBytes[100];
+
+      // Clear expectedHashBytes
+      memset(expectedHashBytes, 0, job_size_task_one);
+      size_t expectedHashLength = expectedHash.length() / 2;
+
+      // Convert expected hash to byte array (for easy comparison)
+      const char *cExpectedHash = expectedHash.c_str();
+      for (size_t i = 0, j = 0; j < expectedHashLength; i += 2, j++)
+        expectedHashBytes[j] = (cExpectedHash[i] % 32 + 9) % 25 * 16 + (cExpectedHash [i + 1] % 32 + 9) % 25;
+
+      // Start measurement
+      unsigned long startTime = micros();
+      byte shaResult[20];
+      String hashUnderTest;
+      unsigned int hashUnderTestLength;
+      bool ignoreHashrate = false;
+
+      // Try to find the nonce which creates the expected hash
+      digitalWrite(LED_BUILTIN, HIGH);
+      for (unsigned long nonceCalc = 0; nonceCalc <= TaskThreadData[taskId].difficulty; nonceCalc++) {
+        // Define hash under Test
+        hashUnderTest = previousHash + String(nonceCalc);
+        hashUnderTestLength = hashUnderTest.length();
+
+        // Wait for hash module lock
+        while ( xSemaphoreTake(xMutex, portMAX_DELAY) != pdTRUE );
+
+        // We are allowed to perform our hash
+        esp_sha(SHA1, (const unsigned char *)hashUnderTest.c_str(), hashUnderTestLength, shaResult);
+
+        // Release hash module lock
+        xSemaphoreGive(xMutex);
+
+        // Check if we have found the nonce for the expected hash
+        if ( memcmp( shaResult, expectedHashBytes, sizeof(shaResult) ) == 0 ) {
+          // Found the nonce - submit it to the server
+          digitalWrite(LED_BUILTIN, LOW);
+          
+          // Calculate mining time
+          float elapsedTime = (micros() - startTime) / 1000.0 / 1000.0; // Total elapsed time in seconds
+          TaskThreadData[taskId].hashrate = nonceCalc / elapsedTime;
+          Serial.println(String(taskCoreName + " found a correct hash (" + elapsedTime + "s)"));
+
+          // Validate connection
+          if (!jobClient.connected()) {
+            Serial.println(String(taskCoreName + " lost connection - reconnecting..."));
+            if (!jobClient.connect(host.c_str(), port)) {
+              Serial.println(String(taskCoreName + " failed to connect"));
               break;
             }
-            Serial.println(F("CORE2 Reconnection successful."));
+            Serial.println(String(taskCoreName + " reconnected successfully"));
           }
-          client.flush();
-          client.print(String(iJob) + "," + String(HashRate) + ",ESP32 CORE2 Miner v2.63," + String(rigname) + "," + String((char*)ID)); // Send result to server
-          Serial.println(F("CORE2 Posting result and waiting for feedback."));
-          while(!client.available()){
-            if (!client.connected()) {
-              Serial.println(F("CORE2 Lost connection. Didn't receive feedback."));
+
+          // Send result to server
+          jobClient.flush();
+          jobClient.print(
+            String(nonceCalc) + MSGDELIMITER + String(TaskThreadData[taskId].hashrate) + MSGDELIMITER +
+            String(MINER_BANNER) + " " + String(MINER_VER) + MSGDELIMITER + String(RIG_IDENTIFIER) + MSGDELIMITER +
+            "DUCOID" + String((char *)chip_id) + MSGDELIMITER + String(walletid) + MSGNEWLINE);
+          jobClient.flush();
+
+          // Wait for job result
+          while (!jobClient.available()) {
+            if (!jobClient.connected()) {
+              Serial.println(String(taskCoreName + " lost connection and didn't receive feedback"));
               break;
             }
             delay(10);
-            yield();
           }
-          delay(50);
           yield();
-          feedback = client.readStringUntil('\n'); // Receive feedback
-          client.flush();
-          Shares++;
-          Serial.println("CORE2 " + String(feedback) + " share #" + String(Shares) + " (" + String(iJob) + ")" + " Hashrate: " + String(HashRate));
-          if (HashRate < 4000) {
-            Serial.println(F("CORE2 Low hashrate. Restarting"));
-            client.flush();
-            client.stop();
-            esp_restart();
-          }
-          break; // Stop and ask for more work
+
+          // Handle feedback
+          String feedback = jobClient.readStringUntil(MSGNEWLINE);
+          jobClient.flush();
+          TaskThreadData[taskId].shares++;
+          if (LED_BLINKING) digitalWrite(LED_BUILTIN, HIGH);
+
+          // Print statistics
+          Serial.println(String(taskCoreName + " retrieved job feedback: " + feedback + ", hashrate: " + (TaskThreadData[taskId].hashrate / 1000) + "kH/s, share #" + TaskThreadData[taskId].shares));
+          
+          // Stop current loop and ask for a new job
+          break;
         }
       }
     }
-    Serial.println(F("CORE2 Not connected. Restarting core 2"));
-    client.flush();
-    client.stop();
+
+    Serial.println(String(taskCoreName + " is not connected - restarting..."));
+    jobClient.flush();
+    jobClient.stop();
   }
 }
 
 void setup() {
-  //disableCore0WDT();
-  //disableCore1WDT();
-  Serial.begin(500000); // Start serial connection
-  Serial.println("\n\nDuino-Coin ESP32 Miner v2.63");
-  
-  WiFi.mode(WIFI_STA); // Setup ESP in client mode
+  Serial.begin(500000);  // Start serial connection
+  Serial.println("\n\nDuino-Coin " + String(MINER_BANNER));
+#if (defined(USE_DHT) || defined(USE_AHT) || defined(USE_BMP280))
+  duinoIoT.begin();
+#endif
+  WiFi.setSleep(false); // Better network responsiveness
+  WiFi.mode(WIFI_STA);  // Setup ESP in client mode
   btStop();
-  WiFi.begin(ssid, password); // Connect to wifi
-  
-  uint64_t chipid = ESP.getEfuseMac(); // Getting chip ID
-  uint16_t chip = (uint16_t)(chipid >> 32); // Preparing for printing a 64 bit value (it's actually 48 bits long) into a char array
-  snprintf((char*)ID, 23, "DUCOID%04X%08X", chip, (uint32_t)chipid); // Storing the 48 bit chip ID into a char array.
-  
-  OTA_status = false;
-  
-  // Port defaults to 3232
-  // ArduinoOTA.setPort(3232);
-  
-  // Hostname defaults to esp3232-[MAC]
-  // ArduinoOTA.setHostname("myesp32");
-  
-  // No authentication by default
-  // ArduinoOTA.setPassword("admin");
-  
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
-  // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
+  WiFi.begin(SSID, WIFI_PASS);  // Connect to wifi
 
+  uint64_t chipid = ESP.getEfuseMac();  // Getting chip chip_id
+  uint16_t chip =
+    (uint16_t)(chipid >> 32);  // Preparing for printing a 64 bit value (it's
+  // actually 48 bits long) into a char array
+  snprintf(
+    (char *)chip_id, 23, "%04X%08X", chip,
+    (uint32_t)chipid);  // Storing the 48 bit chip chip_id into a char array.
+  walletid = random(0, 2811);
+
+  // Autogenerate ID if required
+  if ( strcmp(RIG_IDENTIFIER, "Auto") == 0 ) {
+    snprintf(rigname_auto, 23, "ESP32-%04X%08X", chip, (uint32_t)chipid);
+    RIG_IDENTIFIER = &rigname_auto[0];
+  }
+
+  ota_state = false;
   #ifdef ENABLE_OTA
   ArduinoOTA
-    .onStart([]() {
-      String type;
-      if (ArduinoOTA.getCommand() == U_FLASH)
-        type = "sketch";
-      else // U_SPIFFS
-        type = "filesystem";
-      
-      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-      Serial.println("Start updating " + type);
-      OTA_status = true;
-    })
-    .onEnd([]() {
-      Serial.println(F("\nEnd"));
-    })
-    .onProgress([](unsigned int progress, unsigned int total) {
-      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-      OTA_status = true;
-    })
-    .onError([](ota_error_t error) {
-      Serial.printf("Error[%u]: ", error);
-      if (error == OTA_AUTH_ERROR) Serial.println(F("Auth Failed"));
-      else if (error == OTA_BEGIN_ERROR) Serial.println(F("Begin Failed"));
-      else if (error == OTA_CONNECT_ERROR) Serial.println(F("Connect Failed"));
-      else if (error == OTA_RECEIVE_ERROR) Serial.println(F("Receive Failed"));
-      else if (error == OTA_END_ERROR) Serial.println(F("End Failed"));
-      OTA_status = false;
-      esp_restart();
-    });
-  
-  ArduinoOTA.setHostname(rigname);
+  .onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH)
+      type = "sketch";
+    else  // U_SPIFFS
+      type = "filesystem";
+
+    // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS
+    // using SPIFFS.end()
+    Serial.println("Updating " + type);
+    ota_state = true;
+  })
+  .onEnd([]() {
+    Serial.println(F("\nEnd"));
+  })
+  .onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+    esp_task_wdt_reset();
+    ota_state = true;
+  })
+  .onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR)
+      Serial.println(F("Auth Failed"));
+    else if (error == OTA_BEGIN_ERROR)
+      Serial.println(F("Begin Failed"));
+    else if (error == OTA_CONNECT_ERROR)
+      Serial.println(F("Connect Failed"));
+    else if (error == OTA_RECEIVE_ERROR)
+      Serial.println(F("Receive Failed"));
+    else if (error == OTA_END_ERROR)
+      Serial.println(F("End Failed"));
+    ota_state = false;
+    blink(BLINK_RESET_DEVICE);
+    esp_restart();
+  });
+
+  ArduinoOTA.setHostname(RIG_IDENTIFIER);
   ArduinoOTA.begin();
   #endif
-  
-  esp_task_wdt_init(WDT_TIMEOUT, true); // Init Watchdog timer
-  pinMode(LED_BUILTIN,OUTPUT);
-  
+
+  esp_task_wdt_init(WDT_TIMEOUT, true);  // Init Watchdog timer
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  // Determine which cores to use
+  int wifiCore = 0;
+  int mqttCore = 0;
+  if ( NUMBEROFCORES >= 2 ) mqttCore = 1;
+
+  // Create Semaphore and main Wifi Monitoring Thread
   xMutex = xSemaphoreCreateMutex();
-  xTaskCreatePinnedToCore(WiFireconnect, "WiFirec", 10000, NULL, 3, &WiFirec, 0); //create a task with priority 3 and executed on core 0
+  xTaskCreatePinnedToCore(
+    WiFireconnect, "WiFirec", 10000, NULL, NUMBEROFCORES + 2, &WiFirec,
+    wifiCore);  // create a task with highest priority and executed on core 0
   delay(250);
-  xTaskCreatePinnedToCore(Task1code, "Task1", 10000, NULL, 1, &Task1, 0); //create a task with priority 1 and executed on core 0
+
+  // If MQTT is enabled create a sending thread
+  #ifdef ENABLE_MQTT
+  Serial.println("Creating mqtt thread on core: " + String(mqttCore));
+  xTaskCreatePinnedToCore(
+    MqttPublishCode, "MqttPublishCode", 10000, NULL, 1, &MqttPublishHandle,
+    mqttCore); //create a task with lowest priority and executed on core 1
   delay(250);
-  xTaskCreatePinnedToCore(Task2code, "Task2", 10000, NULL, 2, &Task2, 1); //create a task with priority 2 and executed on core 1
-  delay(250);
+  #endif
+
+  // Create Mining Threads
+  for ( int i = 0; i < NUMBEROFCORES; i++ ) {
+    Serial.println("Creating mining thread on core: " + String(i));
+    xTaskCreatePinnedToCore(
+      TaskMining, String("Task" + String(i)).c_str(), 10000, NULL, 2 + i, &TaskThreadData[NUMBEROFCORES].handler,
+      i);  // create a task with priority 2 (+ core id) and executed on a specific core
+    delay(250);
+  }
 }
 
-void loop() {}
+// ************************************************************
+void MqttPublishCode( void * pvParameters ) {
+  unsigned long lastWdtReset = 0;
+  unsigned long wdtResetDelay = 30000;
+
+  for (;;) {
+    if ((millis() - lastWdtReset) > wdtResetDelay) {
+      // Reset timers
+      esp_task_wdt_reset();
+      lastWdtReset = millis();
+
+      // Calculate combined hashrate and average difficulty
+      float avgDiff = 0.0;
+      float totHash = 0.0;
+      unsigned long totShares = 0;
+      for (int i = 0; i < NUMBEROFCORES; i++) {
+        avgDiff += TaskThreadData[i].difficulty;
+        totHash += TaskThreadData[i].hashrate;
+        totShares += TaskThreadData[i].shares;
+      }
+      avgDiff /= NUMBEROFCORES;
+
+      // Update States
+      mqttClient.publish((mqttRigTopic + "state").c_str(), String(1).c_str());
+      mqttClient.publish((mqttRigTopic + "hashrate").c_str(), String(totHash).c_str());
+      mqttClient.publish((mqttRigTopic + "avgdiff").c_str(), String(avgDiff).c_str());
+      mqttClient.publish((mqttRigTopic + "shares").c_str(), String(totShares).c_str());
+    }
+
+    mqttClient.loop();
+    yield();
+  }
+}
+
+void loop() {
+  vTaskDelete(NULL); /* Free up The CPU */
+}
